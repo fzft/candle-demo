@@ -1,0 +1,13 @@
+[package]
+name = "candle-demo"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0"
+candle-core = { git = "https://github.com/huggingface/candle.git", version = "0.8.0", features = ["cuda"] }
+candle-nn = { git = "https://github.com/huggingface/candle.git", version = "0.8.0" }
+hf-hub = { version = "0.3.2", features = ["tokio"] }
+tokenizers = { version = "0.21.0", features=["http"]}
+tokio = { version = "1.41.1",  features=["full"]}
+thiserror = "2.0.3"
