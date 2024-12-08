@@ -1,4 +1,1 @@
-pub struct Infer {
-
-}
-
+pub struct Infer {}

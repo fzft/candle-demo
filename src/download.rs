@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use hf_hub::api::tokio::{ApiRepo, ApiError};
+use hf_hub::api::tokio::{ApiError, ApiRepo};
 
 pub async fn download_artifacts(api: &ApiRepo) -> Result<PathBuf, ApiError> {
     download_pool_config(api).await?;
@@ -10,7 +10,7 @@ pub async fn download_artifacts(api: &ApiRepo) -> Result<PathBuf, ApiError> {
     Ok(model_path)
 }
 
-pub async fn download_tokenizer(api: &ApiRepo) -> Result<PathBuf, ApiError>{
+pub async fn download_tokenizer(api: &ApiRepo) -> Result<PathBuf, ApiError> {
     println!("Downloading tokenizer");
     match api.get("tokenizer.json").await {
         Ok(p) => {

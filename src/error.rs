@@ -4,5 +4,5 @@ pub enum TextEmbeddingsError {
     TokenizerError(#[from] tokenizers::Error),
     // Add other error variants as needed
     #[error("Api error: {0}")]
-    ApiError(#[from] hf_hub::api::tokio::ApiError)
-} 
+    ApiError(#[from] hf_hub::api::tokio::ApiError),
+}
