@@ -31,9 +31,6 @@ name = "anyhow"
 version = "1.0.93"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4c95c10ba0b00a02636238b814946408b1322d5ac4760326e6fb8ec956d85775"
-dependencies = [
- "backtrace",
-]
 
 [[package]]
 name = "arbitrary"
@@ -149,8 +146,7 @@ name = "candle"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "candle-core 0.8.0",
- "candle-layer-norm",
+ "candle-core",
  "candle-nn",
  "serde",
  "serde_json",
@@ -159,36 +155,11 @@ dependencies = [
 
 [[package]]
 name = "candle-core"
-version = "0.8.0"
-source = "git+https://github.com/huggingface/candle.git#145aa7193c4e658b184f52706574cc9f115e4674"
-dependencies = [
- "byteorder",
- "candle-kernels 0.8.0",
- "cudarc",
- "gemm",
- "half",
- "memmap2",
- "num-traits",
- "num_cpus",
- "rand",
- "rand_distr",
- "rayon",
- "safetensors",
- "thiserror 1.0.69",
- "ug",
- "ug-cuda",
- "yoke",
- "zip",
-]
-
-[[package]]
-name = "candle-core"
 version = "0.8.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d1e306c8a4276ba57ce9fac76d823cc8c8a7fca14bf222ac20ad8b12c4273152"
+source = "git+https://github.com/huggingface/candle.git#67cab7d6b8279f953b0a8cc5012b135b9743cdc8"
 dependencies = [
  "byteorder",
- "candle-kernels 0.8.1",
+ "candle-kernels",
  "cudarc",
  "gemm",
  "half",
@@ -211,7 +182,7 @@ name = "candle-demo"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "candle-core 0.8.0",
+ "candle-core",
  "candle-nn",
  "hf-hub",
  "thiserror 2.0.3",
@@ -221,39 +192,18 @@ dependencies = [
 
 [[package]]
 name = "candle-kernels"
-version = "0.8.0"
-source = "git+https://github.com/huggingface/candle.git#145aa7193c4e658b184f52706574cc9f115e4674"
-dependencies = [
- "bindgen_cuda",
-]
-
-[[package]]
-name = "candle-kernels"
 version = "0.8.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cbd8ea6588f3c6286ea89a52dad3365f0536fd0b71e729fa998cc2347f1df3b6"
+source = "git+https://github.com/huggingface/candle.git#67cab7d6b8279f953b0a8cc5012b135b9743cdc8"
 dependencies = [
  "bindgen_cuda",
-]
-
-[[package]]
-name = "candle-layer-norm"
-version = "0.0.1"
-source = "git+https://github.com/huggingface/candle-layer-norm?rev=94c2add7d94c2d63aebde77f7534614e04dbaea1#94c2add7d94c2d63aebde77f7534614e04dbaea1"
-dependencies = [
- "anyhow",
- "candle-core 0.8.1",
- "half",
- "num_cpus",
- "rayon",
 ]
 
 [[package]]
 name = "candle-nn"
-version = "0.8.0"
-source = "git+https://github.com/huggingface/candle.git#145aa7193c4e658b184f52706574cc9f115e4674"
+version = "0.8.1"
+source = "git+https://github.com/huggingface/candle.git#67cab7d6b8279f953b0a8cc5012b135b9743cdc8"
 dependencies = [
- "candle-core 0.8.0",
+ "candle-core",
  "half",
  "num-traits",
  "rayon",
@@ -521,7 +471,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "33d852cb9b869c2a9b3df2f71a3074817f01e1844f839a144f5fcef059a4eb5d"
 dependencies = [
  "libc",
- "windows-sys 0.59.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -1179,7 +1129,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc2f4eb4bc735547cfed7c0a4922cbd04a4655978c09b54f1f7b228750664c34"
 dependencies = [
  "cfg-if",
- "windows-targets 0.52.6",
+ "windows-targets 0.48.5",
 ]
 
 [[package]]
@@ -2157,7 +2107,7 @@ dependencies = [
  "fastrand",
  "once_cell",
  "rustix",
- "windows-sys 0.59.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -2591,7 +2541,7 @@ version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf221c93e13a30d793f7645a0e7762c55d169dbb0a49671918a2319d289b10bb"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]

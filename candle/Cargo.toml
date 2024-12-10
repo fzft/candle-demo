@@ -4,13 +4,12 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-candle-core = { git = "https://github.com/huggingface/candle.git", version = "0.8.0", features = ["cuda"] }
-candle-nn = { git = "https://github.com/huggingface/candle.git", version = "0.8.0" }
+candle-core = { git = "https://github.com/huggingface/candle.git", version = "0.8.1", features = ["cuda"] }
+candle-nn = { git = "https://github.com/huggingface/candle.git", version = "0.8.1", features = ["cuda"] }
 serde = "1.0"
 serde_json = "1.0"
 anyhow = "1.0"
 tokenizers = { version = "0.21.0", features=["http"]}
-candle-layer-norm = { git = "https://github.com/huggingface/candle-layer-norm", rev = "94c2add7d94c2d63aebde77f7534614e04dbaea1", optional = true }
 
 [lib]
 name = "candle"
@@ -18,3 +17,6 @@ path = "src/lib.rs"
 
 [features]
 cuda =["candle-core/cuda", "candle-nn/cuda"]
+
+[patch.crates-io]
+candle-core = { git = "https://github.com/huggingface/candle.git", rev = "0.8.1" }

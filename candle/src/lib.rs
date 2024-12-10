@@ -130,7 +130,8 @@ mod tests {
             .collect::<Vec<_>>(),
             max_length: encoding.get_ids().to_vec().len() as u32
         };
-        let embedding = model.model.embed(batch).unwrap();
+        let (embedding, raw_embedding) = model.model.embed(batch).unwrap();
         println!("embedding: {:?}", embedding);
+        println!("raw_embedding: {:?}", raw_embedding);
     }
 }

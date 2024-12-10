@@ -1,11 +1,12 @@
 use crate::{layers::HiddenActivation, Batch, ModelType};
-use candle_core::{Result, Tensor, Device};
-use candle_nn::{Embedding, Linear, Module, VarBuilder};
+use candle_core::{Result, Tensor, Device, D};
+use candle_nn::{Embedding, Linear, Module, VarBuilder, LayerNorm};
+use crate::{Pool};
 use serde::Deserialize;
 use crate::Model;
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
-pub struct BertConfig {
+pub struct  BertConfig {
     pub attention_probs_dropout_prob: f64,
     pub bos_token_id: usize,
     pub classifier_dropout: Option<f64>,
@@ -103,7 +104,8 @@ pub struct BertLayer {
     attention: BertAttention,
     intermediate: Linear,
     output: Linear,
-    layer_norm: LayerNorm
+    layer_norm: LayerNorm,
+    hidden_act: HiddenActivation
 }
 
 impl BertLayer {
@@ -142,11 +144,24 @@ impl BertLayer {
         .pp("output")
         .pp("LayerNorm")
         .get(config.hidden_size, "bias")?;
-
         let layer_norm = LayerNorm::new(layer_norm_weight, layer_norm_bias, config.layer_norm_eps);
 
-        Ok(Self { attention, intermediate, output, layer_norm })
+        Ok(Self { attention, intermediate, output, layer_norm, hidden_act: config.hidden_act.clone()})
 
+    }
+
+    pub fn forward(&self, hidden_states: &Tensor, attention_bias: Option<&Tensor>) -> Result<Tensor> {
+        let hidden_states = self.attention.forward(hidden_states, attention_bias)?;
+        let hidden_states = self.intermediate.forward(&hidden_states)?;
+        let hidden_states = match self.hidden_act {
+            HiddenActivation::Gelu => {
+                hidden_states.gelu()?
+            }
+            _ => hidden_states
+        };
+        let hidden_states = self.output.forward(&hidden_states)?;
+        let hidden_states = self.layer_norm.forward(&hidden_states)?;
+        Ok(hidden_states)
     }
 }
 
@@ -154,12 +169,15 @@ pub struct BertAttention {
     qkv_linear: Linear,
     dense: Linear,
     layer_norm: LayerNorm,
-    softmax_scale: f64
+    softmax_scale: f64,
+    num_attention_heads: usize,
+    attention_head_size: usize
 }
 
 impl BertAttention {
 
     pub fn load(vb: VarBuilder, config: &BertConfig) -> Result<Self> {
+        // 1024 / 16 = 64
         let attention_head_size = config.hidden_size / config.num_attention_heads;
         let all_head_size = config.num_attention_heads * attention_head_size;
         let hidden_size = config.hidden_size;
@@ -172,9 +190,9 @@ impl BertAttention {
         let value_weight = vb.pp("self.value").get((all_head_size, hidden_size), "weight")?;
         let value_bias = vb.pp("self.value").get(all_head_size, "bias")?;
 
-
         let qkv_weight = Tensor::cat(&[&query_weight, &key_weight, &value_weight], 0)?;
         let qkv_bias = Tensor::cat(&[&query_bias, &key_bias, &value_bias], 0)?;
+
         let qkv_linear = Linear::new(qkv_weight, Some(qkv_bias));
 
         let dense_weight = vb.pp("output.dense").get((hidden_size, hidden_size), "weight")?;
@@ -190,14 +208,42 @@ impl BertAttention {
             dense,
             layer_norm,
             softmax_scale,
+            num_attention_heads: config.num_attention_heads,
+            attention_head_size
         })
     }
     
     fn forward(&self, hidden_states: &Tensor, attention_bias: Option<&Tensor>) -> Result<Tensor> {
+            // [batch_size, sequence_length, 3 * all_head_size] tensor containing queries, keys, and values.
+        // (1, 9, 1024) * (1024, 3072)
         let qkv = self.qkv_linear.forward(hidden_states)?;
+        // (1, 9, 3072)
         println!("qkv dims : {:?}", qkv.dims());
-        let a = Tensor::new(&[[0.0f32, 1.0, 2.0], [3.0, 4.0, 5.0]], &Device::Cpu)?;
-        Ok(a)
+        let mut new_qkv_shape = qkv.dims().to_vec();
+        new_qkv_shape.pop();
+        new_qkv_shape.push(self.num_attention_heads * 3);
+        new_qkv_shape.push(self.attention_head_size);
+        // (b, seq_len, num_attention_heads * 3, attention_head_size)
+
+        let qkv = qkv.reshape(new_qkv_shape.as_slice())?.transpose(1, 2)?;
+        // (b, num_attention_heads, seq_len, attention_head_size)
+        let qkv: Vec<Tensor> = qkv.chunk(3, 1)?;
+        let query_layer = &qkv[0].contiguous()?;
+        let key_layer = &qkv[1].contiguous()?;
+        let value_layer = &qkv[2].contiguous()?;
+        // (b, num_attention_heads, seq_len, attention_head_size) * (b, num_attention_heads, attention_head_size, seq_len) -》 (b, num_attention_heads, seq_len, seq_len)
+        let attention_scores = query_layer.matmul(&key_layer.t()?)?;
+        // (b, num_attention_heads, seq_len, seq_len) after softmax will sum up to 1
+        let mut attention_scores = (attention_scores * self.softmax_scale)?;
+        let attention_probs = candle_nn::ops::softmax_last_dim(&attention_scores)?;
+        // (b, num_attention_heads, seq, seq) * (b, num_attention_heads, seq_len, attention_head_size) -》（b. num_attention_heads, seq, attention_head_size) 
+        let context_layer = attention_probs.matmul(&value_layer)?;
+        // (b, num_attention_heads, seq_len, attention_head_size) -> (b, seq_len, num_attention_heads, attention_head_size) -> (b, seq_len, hidden_size)
+        let context_layer = context_layer.transpose(1, 2)?.flatten_from(D::Minus2)?;
+        // (b, seq_len, hidden_size)
+        let hidden_states  = self.dense.forward(&context_layer)?;
+        let hidden_states  = self.layer_norm.forward(&hidden_states)?;
+        Ok(hidden_states) 
     }
 }
 
@@ -219,6 +265,14 @@ impl BertEncoder {
         println!("bert encoder load done");
         Ok(Self { layers })
     }
+
+    pub fn forward(&self, hidden_states: &Tensor, attention_bias: Option<&Tensor>) -> Result<Tensor> {
+        let mut hidden_states = hidden_states.clone();
+        for layer in self.layers.iter() {
+            hidden_states = layer.forward(&hidden_states, attention_bias)?;
+        }
+        Ok(hidden_states)
+    }
 }
 
 pub struct BertModel {
@@ -226,6 +280,9 @@ pub struct BertModel {
     encoder: BertEncoder,
     num_attention_heads: usize,
     device: Device,
+    pool: Pool,
+    classifier: Option<Linear>,
+    splade: Option<Linear>
 }
 
 impl BertModel {
@@ -242,15 +299,22 @@ impl BertModel {
             _ => unimplemented!("failed to load embeddings or encoder")
         };
 
+        let (pool, classifier, splade) = match model_type {
+            ModelType::Embedding(pool) => (pool, None, None),
+        };
+
         Ok(Self{
             embeddings,
             encoder,
             num_attention_heads: config.num_attention_heads,
-            device: vb.device().clone()
+            device: vb.device().clone(),
+            pool,
+            classifier,
+            splade
         })
     }
 
-    pub fn forward(&self, batch: Batch) -> Result<Tensor> {
+    pub fn forward(&self, batch: Batch) -> Result<(Option<Tensor>, Option<Tensor>)> {
         let batch_size = batch.len();
         let max_length = batch.max_length as usize;
         let shape = (batch_size, max_length);
@@ -260,16 +324,29 @@ impl BertModel {
         let position_ids = Tensor::from_vec(batch.position_ids, shape, &self.device)?;
 
         let embedding_output = self.embeddings.forward(&input_ids, &type_ids, &position_ids)?;
-        println!("embedding_output dims: {:?}", embedding_output.dims());
-        let a = Tensor::new(&[[0.0f32, 1.0, 2.0], [3.0, 4.0, 5.0]], &Device::Cpu)?;
-        Ok(a)
+        let outputs = self.encoder.forward(&embedding_output, None)?;
+        let pooled_embedding = match self.pool {
+            Pool::Cls => {
+                let cls_index = candle_core::Tensor::new(&[0i64], &self.device)?;
+                let cls_selected = outputs.in(&cls_index, 1)?; 
+                Some(cls_selected)
+            }
+            _ =>  unimplemented!("unsupported pool type")
+        };  
+        let raw_embeddings = {
+            let (b, l, h) = outputs.shape().dims3()?;
+            let outputs = outputs.reshape((b *l, h))?;
+            Some(outputs)
+        };
+        Ok((pooled_embedding, raw_embeddings))
     }
 
 }
 
 impl Model for BertModel {
-    fn embed(&self, batch: Batch) -> Result<Tensor> {
+    fn embed(&self, batch: Batch) -> (Result<Tensor>, Result<Tensor>) {
         println!("start embedding");
-        self.forward(batch)
+        let (pooled_embedding, raw_embedding) = self.forward(batch);
+        (pooled_embedding, raw_embedding)
     }
 }
