@@ -1,5 +1,5 @@
 use crate::{layers::HiddenActivation, Batch, ModelType};
-use candle_core::{Result, Tensor, Device, D};
+use candle_core::{Result, Tensor, Device, D, IndexOp};
 use candle_nn::{Embedding, Linear, Module, VarBuilder, LayerNorm};
 use crate::{Pool};
 use serde::Deserialize;
@@ -218,7 +218,6 @@ impl BertAttention {
         // (1, 9, 1024) * (1024, 3072)
         let qkv = self.qkv_linear.forward(hidden_states)?;
         // (1, 9, 3072)
-        println!("qkv dims : {:?}", qkv.dims());
         let mut new_qkv_shape = qkv.dims().to_vec();
         new_qkv_shape.pop();
         new_qkv_shape.push(self.num_attention_heads * 3);
@@ -321,15 +320,15 @@ impl BertModel {
 
         let input_ids = Tensor::from_vec(batch.input_ids, shape, &self.device)?;
         let type_ids = Tensor::from_vec(batch.token_type_ids, shape, &self.device)?;
-        let position_ids = Tensor::from_vec(batch.position_ids, shape, &self.device)?;
+        let position_ids: Tensor = Tensor::from_vec(batch.position_ids, shape, &self.device)?;
 
         let embedding_output = self.embeddings.forward(&input_ids, &type_ids, &position_ids)?;
         let outputs = self.encoder.forward(&embedding_output, None)?;
-        let pooled_embedding = match self.pool {
+        println!("outputs dims: {:?}", outputs.dims());
+        let pooled_embeddings = match self.pool {
             Pool::Cls => {
-                let cls_index = candle_core::Tensor::new(&[0i64], &self.device)?;
-                let cls_selected = outputs.in(&cls_index, 1)?; 
-                Some(cls_selected)
+                let cls_embeddings = outputs.i((..,0))?;
+                Some(cls_embeddings)
             }
             _ =>  unimplemented!("unsupported pool type")
         };  
@@ -338,15 +337,14 @@ impl BertModel {
             let outputs = outputs.reshape((b *l, h))?;
             Some(outputs)
         };
-        Ok((pooled_embedding, raw_embeddings))
+        Ok((pooled_embeddings, raw_embeddings))
     }
 
 }
 
 impl Model for BertModel {
-    fn embed(&self, batch: Batch) -> (Result<Tensor>, Result<Tensor>) {
+    fn embed(&self, batch: Batch) -> Result<(Option<Tensor>, Option<Tensor>)> {
         println!("start embedding");
-        let (pooled_embedding, raw_embedding) = self.forward(batch);
-        (pooled_embedding, raw_embedding)
+        self.forward(batch)
     }
 }

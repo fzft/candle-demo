@@ -10,6 +10,7 @@ serde = "1.0"
 serde_json = "1.0"
 anyhow = "1.0"
 tokenizers = { version = "0.21.0", features=["http"]}
+nohash-hasher = "0.2"
 
 [lib]
 name = "candle"

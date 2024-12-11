@@ -5,7 +5,10 @@ mod models;
 use candle_core::{DType, Device};
 use candle_nn::VarBuilder;
 use serde::Deserialize;
-use std::path::Path;
+use std::{path::Path, vec};
+use nohash_hasher::IntMap;
+use std::collections::HashMap;
+use nohash_hasher::BuildNoHashHasher;
 
 use models::{BertConfig, BertModel, Model};
 
@@ -15,7 +18,8 @@ pub struct Batch {
     pub token_type_ids: Vec<u32>,
     pub cumulative_seq_lengths: Vec<u32>,
     pub position_ids: Vec<u32>,
-    pub max_length: u32
+    pub max_length: u32,
+    pub pooled_indices: Vec<u32>
 }
 
 impl Batch {
@@ -48,6 +52,13 @@ pub struct Backend {
     device: Device,
     model: Box<dyn Model>
 }
+
+pub enum Embedding {
+    Pooled(Vec<f32>),
+    All(Vec<Vec<f32>>),
+}
+
+pub type Embeddings = IntMap<usize, Embedding>;
 
 impl Backend {
     pub fn new(model_path: &Path, model_type: ModelType) -> Result<Self, anyhow::Error> {
@@ -103,12 +114,34 @@ impl Backend {
 
         Ok(Self { device, model })
     }
+
+
+    pub fn embed(&self, batch: Batch) -> Result<Embeddings, anyhow::Error> {
+        let batch_size = batch.len();
+        let pooled_indices = batch.pooled_indices.clone();
+        let (pooled_embeddings, _) = self.model.embed(batch).unwrap();
+        let pooled_embeddings = match pooled_embeddings {
+            None => vec![],
+            Some(pooled_embeddings) => pooled_embeddings.to_dtype(DType::F32).unwrap().to_vec2().unwrap()
+        };
+
+        let mut embeddings =
+        HashMap::with_capacity_and_hasher(batch_size, BuildNoHashHasher::default());
+        for (i, e) in pooled_indices.into_iter().zip(pooled_embeddings) {
+            embeddings.insert(i as usize, Embedding::Pooled(e));
+        }
+
+        Ok(embeddings)
+        
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use std::path::Path;
     use tokenizers::Tokenizer;
+
+    use crate::Embedding;
 
     use super::{Backend, Batch, ModelType, Pool};
 
@@ -128,10 +161,20 @@ mod tests {
             cumulative_seq_lengths: cu_seq_lengths,
             position_ids: (position_offset as u32..(seq_len + position_offset) as u32)
             .collect::<Vec<_>>(),
-            max_length: encoding.get_ids().to_vec().len() as u32
+            max_length: encoding.get_ids().to_vec().len() as u32,
+            pooled_indices: vec![]
         };
-        let (embedding, raw_embedding) = model.model.embed(batch).unwrap();
-        println!("embedding: {:?}", embedding);
-        println!("raw_embedding: {:?}", raw_embedding);
+        println!("batch: {:?}", batch);
+        let embeddings = model.embed(batch).unwrap();
+        for  v in embeddings.into_values() {
+            match v {
+                Embedding::Pooled(e) => {
+                    println!("embedding: {:?}", e);
+                }
+                Embedding::All(e) => {
+                    println!("embedding: {:?}", e);
+                }
+            }
+        }
     }
 }
